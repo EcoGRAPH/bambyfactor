@@ -2,12 +2,14 @@ rm(list=ls())
 
 library(ggplot2)
 library(mgcv)
+library(dplyr)
 
+# everything until the !!!!!! is just creation of a random data set with distributed lags that depend on some factor variable
 # set up parameters for a model
-nfactorlevels <- 5    # how many factor levels?
+nfactorlevels <- 3    # how many factor levels?
 nobsperlevel  <- 500  # how many observations per factor level?
 envlaglen     <- 180  # how many columns in the lagged environmental data?
-sigmasq       <- 1    # what's the variance on the artificial data?
+sigmaerr      <- 1    # what's the variance on the artificial data?
 
 # create a data frame with artificial environmental data
 mydf <- expand.grid(faclev = 1:nfactorlevels,
@@ -18,5 +20,83 @@ mydf$envcov <- matrix(rnorm(n=nrow(mydf)*envlaglen,
                       nrow=nrow(mydf),
                       ncol=envlaglen)
 
-# create observations per 
-                              
+# figure out which lags correspond to which factor level (randomly)
+faclevs <- data.frame(faclev = unique(mydf$faclev))
+faclevs$dlstart  <- floor(runif(n=nrow(faclevs)) * envlaglen/2)
+faclevs$dlstop   <- floor(runif(n=nrow(faclevs)) * envlaglen/2) + envlaglen/2
+faclevs$dlcoef   <- rnorm(n=nrow(faclevs))
+mydf <- left_join(mydf, faclevs, by="faclev")
+
+# create the outcome observations
+mydf$Y <- 0
+for (currow in 1:nrow(mydf)) {
+  
+  for (curdl in 1:ncol(mydf$envcov)) {
+    
+    if ((curdl >= mydf$dlstart[currow]) & (curdl <= mydf$dlstop[currow])) {
+      
+      mydf$Y[currow] <- mydf$Y[currow] + mydf$envcov[currow, curdl]
+      
+    }
+    
+  }
+  
+}
+mydf$Y <- mydf$Y + rnorm(n=nrow(mydf),
+                         mean=0,
+                         sd=sigmaerr)
+
+
+
+
+
+
+
+
+
+# this is where the actual regression starts
+
+# create the lag matrix for the regression
+# be lazy and copy over the environmental matrix
+mydf$lagmat <- mydf$envcov
+# and then rewrite its columns
+for (curcol in 1:ncol(mydf$envcov)) {
+  
+  mydf$lagmat[,curcol] <- curcol
+  
+}
+
+# now create the environmental covariates by factor level
+# this is where this approach gets really, really inefficient in terms of both memory and calculation
+# there is one matrix per factor level
+for (curlevel in unique(mydf$faclev)) {
+  
+  # create a redundant environmental matrix from the original lagged set
+  mydf[paste("env_", curlevel, sep="")] <- mydf$envcov
+  # if an observation is not from a factor with the current level, then change all its environmental data to 0 in that matrix
+  for (currow in 1:nrow(mydf)) {
+    
+    mydf[currow, paste("env_", curlevel, sep="")] <- mydf[currow, paste("env_", curlevel, sep="")] * (mydf$faclev[currow] == curlevel)
+    
+  }
+  
+}
+
+colnames(mydf)
+View(mydf)
+
+# now run the regression
+envfacnames <- grep(x=colnames(mydf),
+                    pattern="env_",
+                    fixed=TRUE,
+                    value=TRUE)
+myformula <- paste("s(lagmat, by=", envfacnames, ")")
+myformula <- paste(myformula, collapse=" + ", sep="")
+myformula <- paste("Y ~ ", myformula)
+myformula <- formula(myformula)
+myformula
+
+mygam <- bam(myformula, data=mydf)
+summary(mygam)
+
+plot(mygam, select=1)
