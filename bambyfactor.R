@@ -8,9 +8,9 @@ library(dplyr)
 
 # everything until the !!!!!! is just creation of a random data set with distributed lags that depend on some factor variable
 # set up parameters for a model
-nfactorlevels <- 3    # how many factor levels?
+nfactorlevels <- 3   # how many factor levels?
 nobsperlevel  <- 500  # how many observations per factor level?
-envlaglen     <- 100  # how many columns in the lagged environmental data?
+envlaglen     <- 120  # how many columns in the lagged environmental data?
 sigmaerr      <- 1    # what's the variance on the artificial data?
 
 # create a data frame with artificial environmental data
@@ -114,15 +114,14 @@ head(mydf)
 mydf$faclev <- factor(mydf$faclev)
 mydf$faclevmat <- factor(mydf$faclevmat)
 
-mygam_byfactor <- bam(Y ~ 0 + faclev + s(lagmat, by=envcov, bs="tp") + s(lagmat, faclevmat, by=envcov, bs=c("tp", "re")),
+mygam_byfactor <- bam(Y ~ s(lagmat, by=envcov, bs="tp") + te(lagmat, faclevmat, by=envcov, bs=c("tp", "re")),
                       data=mydf)
 
-# mygam_byfactor <- bam(Y ~ 0 + faclev + s(x=lagmat, fac=faclevmat, by=envcov, bs="fs"),
-#                       data=mydf)
-
-tempdf <- model.matrix(mygam_byfactor)
-#View(tempdf)
-colnames(tempdf)
+# tempdf <- model.matrix(mygam_byfactor)
+# #View(tempdf)
+# colnames(tempdf)
+# 
+# str(mygam_byfactor)
 
 thisplot <- plot(mygam_byfactor, select=2)
 tempdf   <- expand.grid(x=thisplot[[2]]$x,
@@ -137,6 +136,6 @@ faclevs
 summary(mygam)
 summary(mygam_byfactor)
 
-plot(mygam, select=1)
-plot(mygam, select=2)
+plot(mygam_byfactor, select=1)
+plot(mygam_byfactor, select=2)
 
